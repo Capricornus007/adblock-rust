@@ -4,10 +4,7 @@
 
 use crate::filters::network::{NetworkFilterMask, NetworkFilterMaskHelper};
 
-use regex::{
-    Regex, bytes::Regex as BytesRegex, bytes::RegexBuilder as BytesRegexBuilder,
-    bytes::RegexSet as BytesRegexSet, bytes::RegexSetBuilder as BytesRegexSetBuilder,
-};
+use regex::{Regex, bytes::Regex as BytesRegex, bytes::RegexBuilder as BytesRegexBuilder};
 use std::sync::LazyLock;
 
 use std::collections::HashMap;
@@ -39,7 +36,7 @@ const DEFAULT_CLEAN_UP_INTERVAL: Duration = Duration::from_secs(30);
 const DEFAULT_DISCARD_UNUSED_TIME: Duration = Duration::from_secs(180);
 
 /// Reports [`RegexManager`] metrics that may be useful for creating an optimized
-/// [`RegexManagerDiscardPolicy`].
+/// [`RegexDiscardPolicy`].
 #[cfg(feature = "debug-info")]
 pub struct RegexDebugInfo {
     /// Information about each regex contained in the [`RegexManager`].
@@ -66,24 +63,18 @@ pub struct RegexDebugEntry {
 }
 
 #[derive(Debug, Clone)]
-pub enum CompiledRegex {
+pub(crate) enum CompiledRegex {
     Compiled(BytesRegex),
-    CompiledSet(BytesRegexSet),
     MatchAll,
     RegexParsingError(regex::Error),
 }
 
 impl CompiledRegex {
-    pub fn is_match(&self, pattern: &str) -> bool {
+    pub(crate) fn is_match(&self, pattern: &str) -> bool {
         match &self {
             CompiledRegex::MatchAll => true, // simple case for matching everything, e.g. for empty filter
             CompiledRegex::RegexParsingError(_e) => false, // no match if regex didn't even compile
             CompiledRegex::Compiled(r) => r.is_match(pattern.as_bytes()),
-            CompiledRegex::CompiledSet(r) => {
-                // let matches: Vec<_> = r.matches(pattern).into_iter().collect();
-                // println!("Matching {} against RegexSet: {:?}", pattern, matches);
-                r.is_match(pattern.as_bytes())
-            }
         }
     }
 }
@@ -94,7 +85,6 @@ impl fmt::Display for CompiledRegex {
             CompiledRegex::MatchAll => write!(f, ".*"), // simple case for matching everything, e.g. for empty filter
             CompiledRegex::RegexParsingError(_e) => write!(f, "ERROR"), // no match if regex didn't even compile
             CompiledRegex::Compiled(r) => write!(f, "{}", r.as_str()),
-            CompiledRegex::CompiledSet(r) => write!(f, "{}", r.patterns().join(" | ")),
         }
     }
 }
@@ -106,14 +96,14 @@ struct RegexEntry {
 }
 
 /// Used for customization of regex discarding behavior in the [`RegexManager`].
-pub struct RegexManagerDiscardPolicy {
+pub struct RegexDiscardPolicy {
     /// The [`RegexManager`] will check for and cleanup unused filters on this interval.
     pub cleanup_interval: Duration,
     /// The [`RegexManager`] will discard a regex if it hasn't been used for this much time.
     pub discard_unused_time: Duration,
 }
 
-impl Default for RegexManagerDiscardPolicy {
+impl Default for RegexDiscardPolicy {
     fn default() -> Self {
         Self {
             cleanup_interval: DEFAULT_CLEAN_UP_INTERVAL,
@@ -128,13 +118,13 @@ type RandomState = std::hash::BuildHasherDefault<seahash::SeaHasher>;
 /// Rarely used entries are discarded to save memory.
 ///
 /// The [`RegexManager`] is not thread safe, so any access to it must be synchronized externally.
-pub struct RegexManager {
+pub(crate) struct RegexManager {
     map: HashMap<u64, RegexEntry, RandomState>,
     compiled_regex_count: usize,
     now: Instant,
     #[cfg_attr(target_arch = "wasm32", allow(unused))]
     last_cleanup: Instant,
-    discard_policy: RegexManagerDiscardPolicy,
+    discard_policy: RegexDiscardPolicy,
 }
 
 impl Default for RegexManager {
@@ -226,12 +216,13 @@ where
             }
         }
     } else {
-        match BytesRegexSetBuilder::new(escaped_patterns)
-            .unicode(false)
-            .build()
-        {
-            Ok(compiled) => CompiledRegex::CompiledSet(compiled),
-            Err(e) => CompiledRegex::RegexParsingError(e),
+        let pattern = format!("(?:{})", escaped_patterns.join("|"));
+        match BytesRegexBuilder::new(&pattern).unicode(false).build() {
+            Ok(compiled) => CompiledRegex::Compiled(compiled),
+            Err(e) => {
+                // println!("Regex parsing failed ({:?})", e);
+                CompiledRegex::RegexParsingError(e)
+            }
         }
     }
 }
@@ -239,7 +230,7 @@ where
 impl RegexManager {
     /// Check whether or not a regex network filter matches a certain URL pattern, using the
     /// [`RegexManager`]'s managed regex storage.
-    pub fn matches<'a, FiltersIter>(
+    pub(crate) fn matches<'a, FiltersIter>(
         &mut self,
         mask: NetworkFilterMask,
         filters: FiltersIter,
@@ -285,7 +276,7 @@ impl RegexManager {
     /// must be called periodically to ensure that it can track usage patterns of regexes over
     /// time. This method will handle periodically discarding filters if necessary.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn update_time(&mut self) {
+    pub(crate) fn update_time(&mut self) {
         self.now = Instant::now();
         if !self.discard_policy.cleanup_interval.is_zero()
             && self.now - self.last_cleanup >= self.discard_policy.cleanup_interval
@@ -307,13 +298,13 @@ impl RegexManager {
     }
 
     /// Customize the discard behavior of this [`RegexManager`].
-    pub fn set_discard_policy(&mut self, new_discard_policy: RegexManagerDiscardPolicy) {
+    pub(crate) fn set_discard_policy(&mut self, new_discard_policy: RegexDiscardPolicy) {
         self.discard_policy = new_discard_policy;
     }
 
     /// Discard one regex, identified by its id from a [`RegexDebugEntry`].
     #[cfg(feature = "debug-info")]
-    pub fn discard_regex(&mut self, regex_id: u64) {
+    pub(crate) fn discard_regex(&mut self, regex_id: u64) {
         self.map
             .iter_mut()
             .filter(|(k, _)| { **k } == regex_id)
@@ -341,7 +332,7 @@ impl RegexManager {
         self.compiled_regex_count
     }
 
-    /// Collect metrics that may be useful for creating an optimized [`RegexManagerDiscardPolicy`].
+    /// Collect metrics that may be useful for creating an optimized [`RegexDiscardPolicy`].
     #[cfg(feature = "debug-info")]
     pub fn get_debug_info(&self) -> RegexDebugInfo {
         RegexDebugInfo {

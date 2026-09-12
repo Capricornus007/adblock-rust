@@ -312,25 +312,18 @@ mod legacy_check_match {
     use adblock::Engine;
     use adblock::request::Request;
 
-    #[allow(deprecated)]
-    fn check_match<'a>(
-        rules: &[&'a str],
-        blocked: &[&'a str],
-        not_blocked: &[&'a str],
-        tags: &[&'a str],
-    ) {
-        let mut engine = Engine::new_with_list_text(rules.join("\n")); // first one with the provided rules
-        engine.use_tags(tags);
+    fn check_match<'a>(rules: &[&'a str], blocked: &[&'a str], not_blocked: &[&'a str]) {
+        let engine = Engine::new_with_list_text(rules.join("\n")); // first one with the provided rules
 
         let mut engine_deserialized = Engine::default(); // second empty
-        engine_deserialized.use_tags(tags);
         {
             let engine_serialized = engine.serialize().to_vec();
             engine_deserialized.deserialize(&engine_serialized).unwrap(); // override from serialized copy
         }
 
         for to_block in blocked {
-            let request = Request::new(to_block, "alwaysthirdparty.com", "script", "").unwrap();
+            let request =
+                Request::new(to_block, "https://alwaysthirdparty.com", "script", "").unwrap();
 
             assert!(
                 engine.check_network_request(&request).should_block(),
@@ -346,7 +339,8 @@ mod legacy_check_match {
         }
 
         for to_pass in not_blocked {
-            let request = Request::new(to_pass, "alwaysthirdparty.com", "script", "").unwrap();
+            let request =
+                Request::new(to_pass, "https://alwaysthirdparty.com", "script", "").unwrap();
 
             assert!(
                 !engine.check_network_request(&request).should_block(),
@@ -368,7 +362,6 @@ mod legacy_check_match {
             &["adv", "@@advice."],
             &["http://example.com/advert.html"],
             &["http://example.com/advice.html"],
-            &[],
         );
 
         check_match(
@@ -380,7 +373,6 @@ mod legacy_check_match {
                 "http://examples.com/advice.html",
                 "http://examples.com/#!foo",
             ],
-            &[],
         );
 
         {
@@ -418,7 +410,6 @@ mod legacy_check_match {
             &["^promotion^"],
             &["http://yahoo.co.jp/promotion/imgs"],
             &[],
-            &[],
         );
 
         check_match(
@@ -435,63 +426,6 @@ mod legacy_check_match {
                 "http://yahoo.co.jp/adsshmads/imgs",
                 "ads://ads.co.ads/aads",
             ],
-            &[],
-        );
-    }
-
-    #[test]
-    fn tag_tests() {
-        // No matching tags should not match a tagged filter
-        check_match(
-            &[
-                "adv$tag=stuff",
-                "somelongpath/test$tag=stuff",
-                "||brianbondy.com/$tag=brian",
-                "||brave.com$tag=brian",
-            ],
-            &[],
-            &[
-                "http://example.com/advert.html",
-                "http://example.com/somelongpath/test/2.html",
-                "https://brianbondy.com/about",
-                "https://brave.com/about",
-            ],
-            &[],
-        );
-        // A matching tag should match a tagged filter
-        check_match(
-            &[
-                "adv$tag=stuff",
-                "somelongpath/test$tag=stuff",
-                "||brianbondy.com/$tag=brian",
-                "||brave.com$tag=brian",
-            ],
-            &[
-                "http://example.com/advert.html",
-                "http://example.com/somelongpath/test/2.html",
-                "https://brianbondy.com/about",
-                "https://brave.com/about",
-            ],
-            &[],
-            &["stuff", "brian"],
-        );
-
-        // A tag which doesn't match shouldn't match
-        check_match(
-            &[
-                "adv$tag=stuff",
-                "somelongpath/test$tag=stuff",
-                "||brianbondy.com/$tag=brian",
-                "||brave.com$tag=brian",
-            ],
-            &[],
-            &[
-                "http://example.com/advert.html",
-                "http://example.com/somelongpath/test/2.html",
-                "https://brianbondy.com/about",
-                "https://brave.com/about",
-            ],
-            &["filtertag1", "filtertag2"],
         );
     }
 }

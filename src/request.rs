@@ -43,7 +43,6 @@ pub enum RequestType {
     Beacon,
     Csp,
     Document,
-    Dtd,
     Fetch,
     Font,
     Image,
@@ -55,7 +54,6 @@ pub enum RequestType {
     Stylesheet,
     Subdocument,
     Websocket,
-    Xlst,
     Xmlhttprequest,
 }
 
@@ -66,8 +64,12 @@ pub enum RequestError {
     HostnameParseError,
     #[error("source hostname parsing failed")]
     SourceHostnameParseError,
-    #[error("invalid Unicode provided")]
-    UnicodeDecodingError,
+}
+
+impl From<url::ParseError> for RequestError {
+    fn from(_err: url::ParseError) -> RequestError {
+        RequestError::HostnameParseError
+    }
 }
 
 fn cpt_match_type(cpt: &str) -> RequestType {
@@ -101,7 +103,7 @@ pub struct Request {
     pub is_third_party: bool,
     pub url: String,
     pub hostname: String,
-    pub source_hostname_hashes: Option<Vec<utils::Hash>>,
+    pub(crate) source_hostname_hashes: Option<Vec<utils::Hash>>,
 
     pub(crate) url_lower_cased: String,
     pub(crate) request_tokens: Vec<utils::Hash>,
@@ -123,11 +125,11 @@ impl Request {
         self.source_hostname_hashes.as_ref().into_iter().flatten()
     }
 
-    pub fn get_tokens_for_match(&self) -> impl Iterator<Item = &utils::Hash> {
+    pub(crate) fn get_tokens_for_match(&self) -> impl Iterator<Item = &utils::Hash> {
         self.get_tokens().iter()
     }
 
-    pub fn get_tokens(&self) -> &Vec<utils::Hash> {
+    pub(crate) fn get_tokens(&self) -> &Vec<utils::Hash> {
         &self.request_tokens
     }
 
@@ -207,13 +209,19 @@ impl Request {
         let parsed_url = url_parser::parse_url(url).ok_or(RequestError::HostnameParseError)?;
         let parsed_method = method.parse::<RequestMethod>().ok();
 
-        let parsed_source = url_parser::parse_url(source_url);
-        let (source_domain, third_party) = match &parsed_source {
-            Some(parsed_source) => (
+        let parsed_source = if source_url.is_empty() {
+            None
+        } else {
+            Some(url_parser::parse_url(source_url).ok_or(RequestError::SourceHostnameParseError)?)
+        };
+
+        let (source_domain, third_party) = if let Some(parsed_source) = &parsed_source {
+            (
                 parsed_source.hostname(),
                 parsed_source.domain() != parsed_url.domain(),
-            ),
-            None => ("", true),
+            )
+        } else {
+            ("", true)
         };
 
         Ok(Request::from_detailed_parameters(
@@ -231,7 +239,7 @@ impl Request {
     /// If you're building a [`Request`] in a context that already has access to parsed
     /// representations of the input URLs, you can use this constructor to avoid extra lookups from
     /// the public suffix list. Take care to pass data correctly.
-    pub fn preparsed(
+    pub fn new_preparsed(
         url: &str,
         hostname: &str,
         source_hostname: &str,

@@ -57,8 +57,6 @@ pub enum NetworkFilterError {
     NegatedExplicitCancel,
     #[error("negated redirection")]
     NegatedRedirection,
-    #[error("negated tag")]
-    NegatedTag,
     #[error("negated generichide")]
     NegatedGenericHide,
     #[error("negated document")]
@@ -304,7 +302,6 @@ impl From<&request::RequestType> for NetworkFilterMask {
             request::RequestType::Beacon => NetworkFilterMask::FROM_PING,
             request::RequestType::Csp => NetworkFilterMask::UNMATCHED,
             request::RequestType::Document => NetworkFilterMask::FROM_DOCUMENT,
-            request::RequestType::Dtd => NetworkFilterMask::FROM_OTHER,
             request::RequestType::Fetch => NetworkFilterMask::FROM_OTHER,
             request::RequestType::Font => NetworkFilterMask::FROM_FONT,
             request::RequestType::Image => NetworkFilterMask::FROM_IMAGE,
@@ -316,7 +313,6 @@ impl From<&request::RequestType> for NetworkFilterMask {
             request::RequestType::Stylesheet => NetworkFilterMask::FROM_STYLESHEET,
             request::RequestType::Subdocument => NetworkFilterMask::FROM_SUBDOCUMENT,
             request::RequestType::Websocket => NetworkFilterMask::FROM_WEBSOCKET,
-            request::RequestType::Xlst => NetworkFilterMask::FROM_OTHER,
             request::RequestType::Xmlhttprequest => NetworkFilterMask::FROM_XMLHTTPREQUEST,
         }
     }
@@ -414,7 +410,6 @@ pub struct NetworkFilter<'a> {
     /// supported per-rule.
     pub modifier_option: Option<&'a str>,
     pub hostname: Option<Cow<'a, str>>,
-    pub(crate) tag: Option<&'a str>,
 
     pub raw_line: Option<Cow<'a, str>>,
 
@@ -538,7 +533,6 @@ impl<'a> NetworkFilter<'a> {
         let mut opt_not_to_domains: Option<Vec<Hash>> = None;
 
         let mut modifier_option: Option<&'a str> = None;
-        let mut tag: Option<&'a str> = None;
 
         if parsed.exception {
             mask.set(NetworkFilterMask::IS_EXCEPTION, true);
@@ -598,7 +592,6 @@ impl<'a> NetworkFilter<'a> {
                     | NetworkFilterOption::FirstParty(false) => {
                         mask.set(NetworkFilterMask::FIRST_PARTY, false)
                     }
-                    NetworkFilterOption::Tag(value) => tag = Some(value),
                     NetworkFilterOption::Redirect(value) => {
                         features_mask.set(NetworkFilterFeaturesMask::IS_REDIRECT, true);
                         features_mask.set(NetworkFilterFeaturesMask::ALSO_BLOCK_REDIRECT, true);
@@ -903,7 +896,6 @@ impl<'a> NetworkFilter<'a> {
             opt_not_domains,
             opt_to_domains,
             opt_not_to_domains,
-            tag,
             raw_line: if debug {
                 Some(Cow::Borrowed(line))
             } else {
@@ -958,7 +950,6 @@ impl<'a> NetworkFilter<'a> {
             opt_not_domains: None,
             opt_to_domains: None,
             opt_not_to_domains: None,
-            tag: None,
             raw_line: if debug { Some(Cow::Owned(rule)) } else { None },
             modifier_option: None,
             id,
