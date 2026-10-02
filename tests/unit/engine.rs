@@ -8,6 +8,11 @@ mod tests {
     use base64::{engine::Engine as _, prelude::BASE64_STANDARD};
     use seahash::hash;
 
+    fn hash_without_header(data: &[u8]) -> u64 {
+        let data_without_header = &data[crate::data_format::HEADER_PREFIX_LENGTH..];
+        hash(data_without_header)
+    }
+
     const HASH_MISMATCH_MSG: &str = r#"
       A change has been detected in the serialized format! If the change is intentional:
       1. Update ADBLOCK_RUST_DAT_VERSION before updating the expected hashes
@@ -18,8 +23,12 @@ mod tests {
     fn deserialization_generate_simple() {
         let mut engine = Engine::new_with_list_text("ad-banner");
         let data = engine.serialize().to_vec();
-        const EXPECTED_HASH: u64 = 10113207146074251361;
-        assert_eq!(hash(&data), EXPECTED_HASH, "{HASH_MISMATCH_MSG}");
+        const EXPECTED_HASH: u64 = 12118781176882813401;
+        assert_eq!(
+            hash_without_header(&data),
+            EXPECTED_HASH,
+            "{HASH_MISMATCH_MSG}"
+        );
         engine.deserialize(&data).unwrap();
     }
 
@@ -41,7 +50,7 @@ mod tests {
     fn deserialization_brave_list() {
         let rules = rules_from_lists(["data/brave/brave-main-list.txt"]);
         let mut engine = Engine::new_with_list_text(rules);
-        let data = engine.serialize().to_vec();
+        let data = engine.serialize();
 
         #[cfg(feature = "debug-info")]
         {
@@ -74,14 +83,45 @@ mod tests {
             assert_eq!(debug_info.source_info[0].cosmetic_filter_count, 42775);
         }
         let expected_hash: u64 = if cfg!(feature = "css-validation") {
-            8139347183297879500
+            10849970402357993908
         } else {
-            2917362085537054910
+            17658898013776520533
         };
 
-        assert_eq!(hash(&data), expected_hash, "{HASH_MISMATCH_MSG}");
+        assert_eq!(
+            hash_without_header(&data),
+            expected_hash,
+            "{HASH_MISMATCH_MSG}"
+        );
 
+        use crate::flatbuffers::unsafe_tools::root_as_engine_calls;
+
+        let initial_count = root_as_engine_calls::count();
         engine.deserialize(&data).unwrap();
+        assert_eq!(
+            root_as_engine_calls::count(),
+            initial_count,
+            "matching crate version should skip fb::root_as_engine"
+        );
+
+        let mut verified = data.clone();
+        verified[crate::data_format::HEADER_PREFIX_LENGTH - 1] ^= 1;
+        engine.deserialize(&verified).unwrap();
+        assert_eq!(
+            root_as_engine_calls::count(),
+            initial_count + 1,
+            "mismatched crate version should call fb::root_as_engine"
+        );
+    }
+
+    #[test]
+    fn deserialize_rejects_invalid_flatbuffer() {
+        let mut garbage = crate::data_format::serialize_dat_file(b"not a flatbuffer");
+        garbage[crate::data_format::HEADER_PREFIX_LENGTH - 1] ^= 1;
+        assert!(matches!(
+            Engine::default().deserialize(&garbage),
+            Err(DeserializationError::FlatBufferParsingError(_))
+        ));
     }
 
     #[test]
