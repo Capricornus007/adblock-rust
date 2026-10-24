@@ -58,8 +58,17 @@ impl NetworkFilterList<'_> {
         )
     }
 
+    pub fn get_opt_to_domains_map(&self) -> FlatNetworkFilterMap<'_> {
+        FlatNetworkFilterMap::new(
+            fb_vector_to_slice(self.list.opt_to_domains_map_index()),
+            self.list.opt_to_domains_map_values(),
+        )
+    }
+
     fn is_empty(&self) -> bool {
-        self.list.filter_map_index().is_empty() && self.list.opt_domains_map_index().is_empty()
+        self.list.filter_map_index().is_empty()
+            && self.list.opt_domains_map_index().is_empty()
+            && self.list.opt_to_domains_map_index().is_empty()
     }
 
     /// Returns the first found filter, if any, that matches the given request. The backing storage
@@ -79,7 +88,23 @@ impl NetworkFilterList<'_> {
         let mut found = None;
         self.match_filters(
             &self.get_opt_domains_map(),
-            request.get_source_hostname_hashes_for_match(),
+            request.source_hostname_hashes.as_deref().unwrap_or(&[]),
+            request,
+            active_tags,
+            regex_manager,
+            |result| {
+                found = Some(result);
+                true
+            },
+        );
+
+        if found.is_some() {
+            return found;
+        }
+
+        self.match_filters(
+            &self.get_opt_to_domains_map(),
+            request.hostname_hashes.as_deref().unwrap_or(&[]),
             request,
             regex_manager,
             |result| {
@@ -95,7 +120,7 @@ impl NetworkFilterList<'_> {
         // Pattern / hostname / catch-all / fallback buckets. Check only for URL tokens.
         self.match_filters(
             &self.get_filter_map(),
-            request.get_tokens_for_match(),
+            &request.request_tokens,
             request,
             regex_manager,
             |result| {
@@ -124,7 +149,19 @@ impl NetworkFilterList<'_> {
 
         self.match_filters(
             &self.get_opt_domains_map(),
-            request.get_source_hostname_hashes_for_match(),
+            request.source_hostname_hashes.as_deref().unwrap_or(&[]),
+            request,
+            active_tags,
+            regex_manager,
+            |result| {
+                filters.push(result);
+                false
+            },
+        );
+
+        self.match_filters(
+            &self.get_opt_to_domains_map(),
+            request.hostname_hashes.as_deref().unwrap_or(&[]),
             request,
             regex_manager,
             |result| {
@@ -135,7 +172,7 @@ impl NetworkFilterList<'_> {
 
         self.match_filters(
             &self.get_filter_map(),
-            request.get_tokens_for_match(),
+            &request.request_tokens,
             request,
             regex_manager,
             |result| {
@@ -149,17 +186,14 @@ impl NetworkFilterList<'_> {
 
     /// Invokes `on_match` for each matching filter. Returns `true` if `on_match` requested an early
     /// stop by returning `true`.
-    fn match_filters<'a, I>(
+    fn match_filters(
         &self,
         filter_map: &FlatNetworkFilterMap<'_>,
-        tokens: I,
+        tokens: &[Hash],
         request: &Request,
         regex_manager: &mut RegexManager,
         mut on_match: impl FnMut(CheckResult) -> bool,
-    ) -> bool
-    where
-        I: IntoIterator<Item = &'a Hash>,
-    {
+    ) -> bool {
         for token in tokens {
             if let Some(iter) = filter_map.get(to_short_hash(*token)) {
                 for fb_filter in iter {
