@@ -328,12 +328,7 @@ impl Blocker {
             if important || (filter.is_some() && exception.is_none()) {
                 (None, false)
             } else {
-                Self::collect_replace(
-                    &self.replace(),
-                    request,
-                    &self.tags_enabled,
-                    regex_manager.deref_mut(),
-                )
+                Self::collect_replace(&self.replace(), request, regex_manager.deref_mut())
             };
 
         // If something has already matched before but we don't know what, still return a match
@@ -371,10 +366,9 @@ impl Blocker {
     fn collect_replace(
         replace_filters: &NetworkFilterList,
         request: &Request,
-        tags_enabled: &HashSet<String>,
         regex_manager: &mut RegexManager,
     ) -> (Option<Vec<String>>, bool) {
-        let filters = replace_filters.check_all(request, tags_enabled, regex_manager);
+        let filters = replace_filters.check_all(request, regex_manager);
         if filters.is_empty() {
             return (None, false);
         }

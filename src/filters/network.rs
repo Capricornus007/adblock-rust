@@ -1029,7 +1029,6 @@ impl<'a> NetworkFilter<'a> {
             opt_to_domains,
             opt_not_to_domains,
             to_only_broad,
-            tag,
             raw_line: if debug {
                 Some(Cow::Borrowed(line))
             } else {
@@ -1085,7 +1084,6 @@ impl<'a> NetworkFilter<'a> {
             opt_to_domains: None,
             opt_not_to_domains: None,
             to_only_broad: false,
-            tag: None,
             raw_line: if debug { Some(Cow::Owned(rule)) } else { None },
             modifier_option: None,
             id,

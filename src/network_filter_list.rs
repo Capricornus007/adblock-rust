@@ -90,7 +90,6 @@ impl NetworkFilterList<'_> {
             &self.get_opt_domains_map(),
             request.source_hostname_hashes.as_deref().unwrap_or(&[]),
             request,
-            active_tags,
             regex_manager,
             |result| {
                 found = Some(result);
@@ -151,7 +150,6 @@ impl NetworkFilterList<'_> {
             &self.get_opt_domains_map(),
             request.source_hostname_hashes.as_deref().unwrap_or(&[]),
             request,
-            active_tags,
             regex_manager,
             |result| {
                 filters.push(result);

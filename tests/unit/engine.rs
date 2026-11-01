@@ -69,21 +69,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
-    fn deserialization_generate_tags() {
-        let mut engine = Engine::new_with_list_text("ad-banner$tag=abc");
-        engine.use_tags(&["abc"]);
-        let data = engine.serialize().to_vec();
-        const EXPECTED_HASH: u64 = 17947791698945847098;
-        assert_eq!(
-            hash_without_header(&data),
-            EXPECTED_HASH,
-            "{HASH_MISMATCH_MSG}"
-        );
-        engine.deserialize(&data).unwrap();
-    }
-
-    #[test]
     fn deserialization_generate_resources() {
         let mut engine = Engine::new_with_list_text("ad-banner$redirect=nooptext");
 

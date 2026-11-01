@@ -26,6 +26,11 @@ pub(crate) enum NetworkFilterListId {
     RemoveParam = 4,
     Filters = 5,
     GenericHide = 6,
+    // 序列化格式（flatbuffer NetworkFilterList）第 7 欄是上游的 tagged_filters_all。
+    // 本 fork 在 9fcf768e「remove `$tag`」就把 $tag 支援拿掉了，所以永遠不會寫這一欄；
+    // 但欄位編號要留著——刪了它不會動到 Size=9，可是不留名字就沒人知道 7 為什麼是空的。
+    // clippy 是 `-D warnings`（sanity.yml），所以這裡用 allow 標掉「從不構造」。
+    #[allow(dead_code)]
     TaggedFiltersAll = 7,
     Replace = 8,
     Size = 9,
