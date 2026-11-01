@@ -59,7 +59,7 @@ mod tests {
     fn deserialization_generate_simple() {
         let mut engine = Engine::new_with_list_text("ad-banner");
         let data = engine.serialize().to_vec();
-        const EXPECTED_HASH: u64 = 16174589584358908453;
+        const EXPECTED_HASH: u64 = 13690099025913640933;
         assert_eq!(
             hash_without_header(&data),
             EXPECTED_HASH,
@@ -115,13 +115,13 @@ mod tests {
                 debug_info.source_info[0].homepage,
                 Some("https://github.com/uBlockOrigin/uAssets".to_string())
             );
-            assert_eq!(debug_info.source_info[0].network_filter_count, 124278);
+            assert_eq!(debug_info.source_info[0].network_filter_count, 124259);
             assert_eq!(debug_info.source_info[0].cosmetic_filter_count, 42775);
         }
         let expected_hash: u64 = if cfg!(feature = "css-validation") {
-            17902877162789739649
+            15502000231530113095
         } else {
-            4788447722899950551
+            3752423449313305777
         };
 
         assert_eq!(
